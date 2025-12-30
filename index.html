@@ -13,6 +13,18 @@
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
+            margin: 0;
+            padding: 0;
+        }
+        /* Previne o flash de tela branca antes do React carregar */
+        #root:empty::before {
+            content: "Carregando Engenharia Elétrica...";
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #6366f1;
+            font-weight: 600;
         }
     </style>
 <script type="importmap">
@@ -29,5 +41,7 @@
 </head>
 <body>
     <div id="root"></div>
+    <!-- Ponto de entrada crucial para o Vercel/Navegador -->
+    <script type="module" src="./index.tsx"></script>
 </body>
 </html>

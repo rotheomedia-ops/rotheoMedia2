@@ -3,10 +3,28 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AspectRatio } from "../types";
 
 export class GeminiService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    const apiKey = process.env.API_KEY;
+    if (apiKey) {
+      this.ai = new GoogleGenAI({ apiKey });
+    } else {
+      console.warn("API_KEY not found in environment variables. Gemini features will be disabled.");
+    }
+  }
+
+  private get client(): GoogleGenAI {
+    if (!this.ai) {
+      // Re-tentar inicialização caso tenha sido injetado dinamicamente
+      const apiKey = process.env.API_KEY;
+      if (apiKey) {
+        this.ai = new GoogleGenAI({ apiKey });
+        return this.ai;
+      }
+      throw new Error("Chave de API do Gemini não configurada. Configure o segredo 'API_KEY' no Vercel.");
+    }
+    return this.ai;
   }
 
   private async fileToBase64(file: File): Promise<string> {
@@ -97,7 +115,7 @@ export class GeminiService {
 
     parts.push({ text: fullPrompt });
 
-    const response = await this.ai.models.generateContent({
+    const response = await this.client.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts },
       config: {
@@ -120,8 +138,6 @@ export class GeminiService {
     productFiles: File[]
   ): Promise<string> {
     const parts = [];
-    
-    // Add ambient image
     const ambientBase64 = await this.fileToBase64(ambientFile);
     parts.push({
       inlineData: {
@@ -130,7 +146,6 @@ export class GeminiService {
       }
     });
 
-    // Add product images
     for (const file of productFiles) {
       const base64 = await this.fileToBase64(file);
       parts.push({
@@ -156,7 +171,7 @@ export class GeminiService {
 
     parts.push({ text: fullPrompt });
 
-    const response = await this.ai.models.generateContent({
+    const response = await this.client.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts },
     });
@@ -184,7 +199,7 @@ export class GeminiService {
       mimeType = sourceImage.split(',')[0].split(':')[1].split(';')[0];
     }
 
-    const response = await this.ai.models.generateContent({
+    const response = await this.client.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
@@ -197,10 +212,6 @@ export class GeminiService {
           {
             text: `
               Edit this image based on the following instruction: ${editPrompt}. 
-              
-              CRITICAL INSTRUCTIONS FOR TEXT:
-              If the instruction asks to add or change text, use the EXACT words provided in the prompt. Do not translate or modify them.
-              
               Maintain agency-level realism, sharpness, and professional lighting integration.
             `,
           },
@@ -217,7 +228,7 @@ export class GeminiService {
   }
 
   async generateAdCopy(prompt: string, platform: string): Promise<{ caption: string, voiceover: string }> {
-    const textModel = this.ai.models.generateContent({
+    const textModel = this.client.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `
         Atue como um redator sênior e especialista em SEO de alta performance.
@@ -256,7 +267,7 @@ export class GeminiService {
   }
 
   async generateAudio(text: string, voiceName: string): Promise<string> {
-    const response = await this.ai.models.generateContent({
+    const response = await this.client.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
       config: {
