@@ -1,0 +1,7 @@
+{
+  "name": "Rotheo Media",
+  "description": "High-end marketing asset generator for Instagram, Facebook, and Google Ads using advanced AI image synthesis and SEO text generation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
