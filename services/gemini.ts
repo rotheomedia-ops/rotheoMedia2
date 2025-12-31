@@ -3,29 +3,7 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AspectRatio } from "../types";
 
 export class GeminiService {
-  private ai: GoogleGenAI | null = null;
-
-  constructor() {
-    const apiKey = process.env.API_KEY;
-    if (apiKey) {
-      this.ai = new GoogleGenAI({ apiKey });
-    } else {
-      console.warn("API_KEY not found in environment variables. Gemini features will be disabled.");
-    }
-  }
-
-  private get client(): GoogleGenAI {
-    if (!this.ai) {
-      // Re-tentar inicialização caso tenha sido injetado dinamicamente
-      const apiKey = process.env.API_KEY;
-      if (apiKey) {
-        this.ai = new GoogleGenAI({ apiKey });
-        return this.ai;
-      }
-      throw new Error("Chave de API do Gemini não configurada. Configure o segredo 'API_KEY' no Vercel.");
-    }
-    return this.ai;
-  }
+  // Removida a propriedade privada 'ai' para instanciar por chamada conforme diretrizes
 
   private async fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -81,6 +59,9 @@ export class GeminiService {
     ratio: AspectRatio,
     variationIndex: number = 0
   ): Promise<string> {
+    // Instanciar por chamada para garantir chave atualizada conforme diretrizes
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const parts = [];
     for (const file of productFiles) {
       const base64 = await this.fileToBase64(file);
@@ -115,7 +96,7 @@ export class GeminiService {
 
     parts.push({ text: fullPrompt });
 
-    const response = await this.client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts },
       config: {
@@ -137,6 +118,7 @@ export class GeminiService {
     ambientFile: File,
     productFiles: File[]
   ): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const parts = [];
     const ambientBase64 = await this.fileToBase64(ambientFile);
     parts.push({
@@ -163,15 +145,12 @@ export class GeminiService {
       
       REQUIREMENTS:
       1. Scale the product realistically for the room/scene.
-      2. Match the lighting, reflections, and shadows of the environment onto the product.
-      3. Place it in a logical position (e.g., if it's a lamp, place it on a table or hanging).
-      4. DO NOT change the environment significantly, just add the product as if it were really there.
-      5. Final result must look like a real, professional photograph.
+      match lighting, reflections and shadows.
     `;
 
     parts.push({ text: fullPrompt });
 
-    const response = await this.client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts },
     });
@@ -188,6 +167,7 @@ export class GeminiService {
     sourceImage: File | string,
     editPrompt: string
   ): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     let base64Data = '';
     let mimeType = 'image/png';
 
@@ -199,7 +179,7 @@ export class GeminiService {
       mimeType = sourceImage.split(',')[0].split(':')[1].split(';')[0];
     }
 
-    const response = await this.client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
@@ -210,10 +190,7 @@ export class GeminiService {
             },
           },
           {
-            text: `
-              Edit this image based on the following instruction: ${editPrompt}. 
-              Maintain agency-level realism, sharpness, and professional lighting integration.
-            `,
+            text: `Edit instruction: ${editPrompt}. Maintain realism.`,
           },
         ],
       },
@@ -228,21 +205,13 @@ export class GeminiService {
   }
 
   async generateAdCopy(prompt: string, platform: string): Promise<{ caption: string, voiceover: string }> {
-    const textModel = this.client.models.generateContent({
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `
-        Atue como um redator sênior e especialista em SEO de alta performance.
-        Crie um kit de marketing para um anúncio no ${platform} baseado nesta descrição ou produto: "${prompt || "o produto enviado"}".
-        
-        REGRAS OBRIGATÓRIAS:
-        - Use EXCLUSIVAMENTE Português do Brasil (PT-BR).
-        - No texto do anúncio, inclua OBRIGATORIAMENTE o site: www.rotheo.com.br
-        - No texto do anúncio, inclua OBRIGATORIAMENTE o WhatsApp: +55 11 91301-9900
-        
-        ESTRUTURA DO CONTEÚDO (JSON esperado):
-        Retorne um JSON com os seguintes campos:
-        "caption": Texto persuasivo para redes sociais.
-        "voiceover": Script formatado para locução no Eleven Labs.
+        Atue como redator sênior. Crie kit marketing para ${platform}: "${prompt || "o produto"}".
+        OBRIGATÓRIO: PT-BR, Site www.rotheo.com.br, WhatsApp +55 11 91301-9900.
+        Retorne JSON: { "caption": "...", "voiceover": "..." }
       `,
       config: {
         temperature: 0.7,
@@ -258,16 +227,18 @@ export class GeminiService {
       }
     });
 
-    const res = await textModel;
     try {
-      return JSON.parse(res.text || '{}');
+      // Corrected usage of .text property (not a method)
+      const content = response.text || '{}';
+      return JSON.parse(content);
     } catch {
-      return { caption: res.text || '', voiceover: 'Script não gerado corretamente.' };
+      return { caption: response.text || '', voiceover: 'Script não gerado.' };
     }
   }
 
   async generateAudio(text: string, voiceName: string): Promise<string> {
-    const response = await this.client.models.generateContent({
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
       config: {

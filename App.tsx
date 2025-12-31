@@ -5,7 +5,19 @@ import FileUpload from './components/FileUpload';
 import { GeminiService } from './services/gemini';
 import { Platform, UploadedFile, GeneratedAsset, AppTab, VOICES } from './types';
 import { PLATFORM_OPTIONS } from './constants';
-import { Send, Copy, Check, RefreshCw, PenTool, Download, Mic, Plus, Minus, ShoppingBag, Trash2, Mic2, Play, Music, Layers, Image as ImageIcon } from 'lucide-react';
+import { Send, Copy, Check, RefreshCw, PenTool, Download, Mic, Plus, Minus, ShoppingBag, Trash2, Mic2, Play, Music, Layers, Image as ImageIcon, Key } from 'lucide-react';
+
+// Fixed aistudio declaration to match global type expectations and fix conflicting modifiers/types
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    aistudio: AIStudio;
+  }
+}
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AppTab>('generate');
@@ -37,6 +49,20 @@ const App: React.FC = () => {
 
   const gemini = new GeminiService();
 
+  const handleApiError = async (error: any) => {
+    console.error("API Error Details:", error);
+    const errorMsg = error?.message || "";
+    
+    if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY") || errorMsg.includes("403") || errorMsg.includes("401")) {
+      const confirmKey = confirm("Sua chave de API parece estar ausente ou inválida para este ambiente. Deseja selecionar uma chave agora?");
+      if (confirmKey && window.aistudio) {
+        await window.aistudio.openSelectKey();
+        return true; // Chave solicitada
+      }
+    }
+    return false;
+  };
+
   const handleGenerate = async () => {
     if (files.length === 0) return;
     
@@ -61,9 +87,11 @@ const App: React.FC = () => {
         voiceover: copyData.voiceover,
         hashtags: [] 
       });
-    } catch (error) {
-      console.error(error);
-      alert('A geração falhou. Verifique sua conexão.');
+    } catch (error: any) {
+      const handled = await handleApiError(error);
+      if (!handled) {
+        alert('A geração falhou. Verifique sua chave de API nas configurações do Vercel ou clique no botão de chave abaixo.');
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -80,7 +108,7 @@ const App: React.FC = () => {
       );
       setIntegrateResult(resultUrl);
     } catch (error) {
-      console.error(error);
+      await handleApiError(error);
       alert('A integração falhou.');
     } finally {
       setIsGenerating(false);
@@ -96,7 +124,7 @@ const App: React.FC = () => {
       const editedUrl = await gemini.editImage(sourceImage, editPrompt);
       setEditResult(editedUrl);
     } catch (error) {
-      console.error(error);
+      await handleApiError(error);
       alert('Falha na edição.');
     } finally {
       setIsGenerating(false);
@@ -110,7 +138,7 @@ const App: React.FC = () => {
       const url = await gemini.generateAudio(audioScript, selectedVoice);
       setGeneratedAudioUrl(url);
     } catch (error) {
-      console.error(error);
+      await handleApiError(error);
       alert('Falha na geração do áudio.');
     } finally {
       setIsGenerating(false);
@@ -171,6 +199,14 @@ const App: React.FC = () => {
     }
   };
 
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+    } else {
+      alert("Seletor de chave não disponível neste ambiente. Certifique-se de configurar a API_KEY no Vercel.");
+    }
+  };
+
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
       <header className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -188,15 +224,25 @@ const App: React.FC = () => {
               : 'Transforme seus roteiros em narrações profissionais prontas para uso.'}
           </p>
         </div>
-        {(files.length > 0 || result || editResult || audioScript || integrateBgFiles.length > 0) && (
+        <div className="flex gap-2">
           <button 
-            onClick={clearAll}
-            className="flex items-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm font-bold transition-colors border border-red-100"
+            onClick={handleOpenKeySelector}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-600 rounded-lg text-sm font-bold transition-colors border border-amber-100 hover:bg-amber-100"
+            title="Configurar Chave de API Manualmente"
           >
-            <Trash2 className="w-4 h-4" />
-            Limpar Tudo
+            <Key className="w-4 h-4" />
+            Chave API
           </button>
-        )}
+          {(files.length > 0 || result || editResult || audioScript || integrateBgFiles.length > 0) && (
+            <button 
+              onClick={clearAll}
+              className="flex items-center gap-2 px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg text-sm font-bold transition-colors border border-red-100"
+            >
+              <Trash2 className="w-4 h-4" />
+              Limpar Tudo
+            </button>
+          )}
+        </div>
       </header>
 
       {activeTab === 'generate' ? (
