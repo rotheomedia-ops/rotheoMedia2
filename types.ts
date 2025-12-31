@@ -1,7 +1,8 @@
 
 export type Platform = 'instagram' | 'facebook' | 'google' | 'mercado-livre';
 
-export type AspectRatio = '1:1' | '4:5' | '9:16' | '16:9';
+// Updated to match Gemini Image Generation supported ratios: "1:1", "3:4", "4:3", "9:16", and "16:9"
+export type AspectRatio = '1:1' | '3:4' | '9:16' | '16:9';
 
 export type AppTab = 'generate' | 'edit' | 'audio' | 'integrate';
 

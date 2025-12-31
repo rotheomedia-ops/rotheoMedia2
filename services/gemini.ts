@@ -3,8 +3,6 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { AspectRatio } from "../types";
 
 export class GeminiService {
-  // Removida a propriedade privada 'ai' para instanciar por chamada conforme diretrizes
-
   private async fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -53,15 +51,18 @@ export class GeminiService {
     return combined;
   }
 
+  // Refined getClient to use process.env.API_KEY directly as per guidelines
+  private getClient() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+
   async generateAdImage(
     productFiles: File[],
     prompt: string,
     ratio: AspectRatio,
     variationIndex: number = 0
   ): Promise<string> {
-    // Instanciar por chamada para garantir chave atualizada conforme diretrizes
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
+    const ai = this.getClient();
     const parts = [];
     for (const file of productFiles) {
       const base64 = await this.fileToBase64(file);
@@ -73,25 +74,13 @@ export class GeminiService {
       });
     }
 
-    const sceneDescription = prompt.trim() || "AUTOMATIC_DETECTION";
-    
     const fullPrompt = `
-      Professional agency-level commercial photography. 
-      Create a high-end marketing visual for the product shown in the images.
-      
-      SCENE CONTEXT:
-      ${sceneDescription === "AUTOMATIC_DETECTION" 
-        ? "Identify the product provided. If it's a lamp (luminária), place it in a cozy, high-end living room or bedroom with warm lighting. If it's a solar panel (painel solar), place it on a modern sunny rooftop. For any other product, create a luxurious and fitting environment optimized for sales." 
-        : `Description: ${sceneDescription}`}
-      
-      CRITICAL INSTRUCTIONS FOR TEXT OVERLAYS:
-      If the user specifies any text in their description (e.g., in quotes like 'OFERTA'), include that EXACT text with professional typography.
-      
-      VARIATION REQUIREMENT:
-      Variation #${variationIndex + 1}. Unique composition.
-      
-      Style: Sharp focus, professional studio lighting, realistic textures, high dynamic range.
-      Aspect Ratio required: ${ratio}.
+      Fotografia comercial de alto padrão.
+      Crie um anúncio luxuoso para o produto nas imagens.
+      CONTEXTO: ${prompt || "Ambiente moderno e profissional."}
+      ESTILO: Foco nítido, iluminação de estúdio, HDR, 8k.
+      Variação #${variationIndex + 1}.
+      Proporção: ${ratio}.
     `;
 
     parts.push({ text: fullPrompt });
@@ -111,44 +100,21 @@ export class GeminiService {
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error('No image was generated');
+    throw new Error('Nenhuma imagem gerada');
   }
 
-  async integrateProduct(
-    ambientFile: File,
-    productFiles: File[]
-  ): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  async integrateProduct(ambientFile: File, productFiles: File[]): Promise<string> {
+    const ai = this.getClient();
     const parts = [];
     const ambientBase64 = await this.fileToBase64(ambientFile);
-    parts.push({
-      inlineData: {
-        data: ambientBase64,
-        mimeType: ambientFile.type
-      }
-    });
+    parts.push({ inlineData: { data: ambientBase64, mimeType: ambientFile.type } });
 
     for (const file of productFiles) {
       const base64 = await this.fileToBase64(file);
-      parts.push({
-        inlineData: {
-          data: base64,
-          mimeType: file.type
-        }
-      });
+      parts.push({ inlineData: { data: base64, mimeType: file.type } });
     }
 
-    const fullPrompt = `
-      You are a professional product visualizer. 
-      I have provided an environment image (the first one) and a product image.
-      Your task is to SEAMLESSLY INTEGRATE the product into that environment.
-      
-      REQUIREMENTS:
-      1. Scale the product realistically for the room/scene.
-      match lighting, reflections and shadows.
-    `;
-
-    parts.push({ text: fullPrompt });
+    parts.push({ text: "Integre o produto no ambiente real de forma perfeita, mantendo luz e sombras." });
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -156,18 +122,13 @@ export class GeminiService {
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error('Integration failed');
+    throw new Error('Falha na integração');
   }
 
-  async editImage(
-    sourceImage: File | string,
-    editPrompt: string
-  ): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  async editImage(sourceImage: File | string, editPrompt: string): Promise<string> {
+    const ai = this.getClient();
     let base64Data = '';
     let mimeType = 'image/png';
 
@@ -183,38 +144,28 @@ export class GeminiService {
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [
-          {
-            inlineData: {
-              data: base64Data,
-              mimeType: mimeType,
-            },
-          },
-          {
-            text: `Edit instruction: ${editPrompt}. Maintain realism.`,
-          },
+          { inlineData: { data: base64Data, mimeType } },
+          { text: `Edite a imagem: ${editPrompt}` },
         ],
       },
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
-      }
+      if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
     }
-    throw new Error('Editing failed');
+    throw new Error('Falha na edição');
   }
 
   async generateAdCopy(prompt: string, platform: string): Promise<{ caption: string, voiceover: string }> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `
-        Atue como redator sênior. Crie kit marketing para ${platform}: "${prompt || "o produto"}".
-        OBRIGATÓRIO: PT-BR, Site www.rotheo.com.br, WhatsApp +55 11 91301-9900.
-        Retorne JSON: { "caption": "...", "voiceover": "..." }
+        Crie kit marketing para ${platform}: "${prompt || "produto técnico"}".
+        OBRIGATÓRIO: PT-BR, incluir site www.rotheo.com.br e WhatsApp +55 11 91301-9900.
+        Retorne JSON: { "caption": "texto post", "voiceover": "texto locutor" }
       `,
       config: {
-        temperature: 0.7,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -228,31 +179,28 @@ export class GeminiService {
     });
 
     try {
-      // Corrected usage of .text property (not a method)
-      const content = response.text || '{}';
-      return JSON.parse(content);
+      // Accessing response.text directly as it is a property
+      return JSON.parse(response.text || '{}');
     } catch {
-      return { caption: response.text || '', voiceover: 'Script não gerado.' };
+      return { caption: response.text || '', voiceover: 'Erro ao gerar script.' };
     }
   }
 
   async generateAudio(text: string, voiceName: string): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = this.getClient();
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
-          },
+          voiceConfig: { prebuiltVoiceConfig: { voiceName } },
         },
       },
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("Audio generation failed");
+    if (!base64Audio) throw new Error("Falha no áudio");
 
     const pcmData = this.decodeBase64(base64Audio);
     const wavData = this.createWavHeader(pcmData, 24000);
